@@ -11,6 +11,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/AryanAguiar/LatencyLab/backend/internal/faults"
+	"github.com/AryanAguiar/LatencyLab/backend/internal/sandbox"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
@@ -92,79 +94,15 @@ func (r createTargetRequest) validate() map[string]string {
 }
 
 // ---------------------------------------------------------------------
-// sandbox
-type product struct {
-	ID    int     `json:"id"`
-	Name  string  `json:"name"`
-	Price float64 `json:"price"`
-	Stock int     `json:"stock"`
-}
-
-type user struct {
-	ID    int    `json:"id"`
-	Name  string `json:"name"`
-	Email string `json:"email"`
-	Role  string `json:"role"`
-}
-
-type order struct {
-	ID        int    `json:"id"`
-	UserID    int    `json:"user_id"`
-	ProductID int    `json:"product_id"`
-	Quantity  int    `json:"quantity"`
-	Status    string `json:"status"`
-}
-
-type sandboxEndpoint struct {
-	Method      string `json:"method"`
-	Path        string `json:"path"`
-	Description string `json:"description"`
-}
-
-var (
-	sandboxProducts = []product{
-		{ID: 1, Name: "Mechanical Keyboard", Price: 89.99, Stock: 42},
-		{ID: 2, Name: "USB-C Hub", Price: 34.50, Stock: 120},
-		{ID: 3, Name: "27in Monitor", Price: 249.00, Stock: 15},
-	}
-	sandboxUsers = []user{
-		{ID: 1, Name: "Asha Rao", Email: "asha@example.com", Role: "admin"},
-		{ID: 2, Name: "Ben Carter", Email: "ben@example.com", Role: "customer"},
-		{ID: 3, Name: "Chen Wei", Email: "chen@example.com", Role: "customer"},
-	}
-	sandboxOrders = []order{
-		{ID: 101, UserID: 2, ProductID: 1, Quantity: 1, Status: "shipped"},
-		{ID: 102, UserID: 3, ProductID: 2, Quantity: 3, Status: "pending"},
-		{ID: 103, UserID: 2, ProductID: 3, Quantity: 1, Status: "delivered"},
-	}
-	sandboxEndpoints = []sandboxEndpoint{
-		{Method: "GET", Path: "/sandbox/api/products", Description: "Simulated products response"},
-		{Method: "GET", Path: "/sandbox/api/users", Description: "Simulated users response"},
-		{Method: "GET", Path: "/sandbox/api/orders", Description: "Simulated orders response"},
-	}
-)
-
-func listSandboxEndpointsHandler(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"data": sandboxEndpoints})
-}
-
-func productsHandler(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"data": sandboxProducts})
-}
-
-func usersHandler(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"data": sandboxUsers})
-}
-
-func ordersHandler(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"data": sandboxOrders})
-}
-
-// ---------------------------------------------------------------------
 // main
 func main() {
 	port := getEnv("PORT", "8080")
 	r := chi.NewRouter()
+
+	testFaults := faults.Config{DelayMs: 200, FailureProbability: 0.3}
+	if err := testFaults.Validate(); err != nil {
+		log.Fatalf("invalid fault config: %v", err)
+	}
 
 	frontendOrigin := getEnv("FRONTEND_ORIGIN", "http://localhost:5173")
 	r.Use(middleware.RequestID)
@@ -188,14 +126,13 @@ func main() {
 	r.Route("/api", func(r chi.Router) {
 		r.Post("/targets", createTargetHandler)
 		r.Route("/v1", func(r chi.Router) {
-			r.Get("/sandbox/endpoints", listSandboxEndpointsHandler)
+			r.Get("/sandbox/endpoints", sandbox.ListEndpoints)
 		})
 	})
 
 	r.Route("/sandbox/api", func(r chi.Router) {
-		r.Get("/products", productsHandler)
-		r.Get("/users", usersHandler)
-		r.Get("/orders", ordersHandler)
+		r.Use(faults.Middleware(testFaults))
+		sandbox.Routes(r)
 	})
 
 	srv := &http.Server{
