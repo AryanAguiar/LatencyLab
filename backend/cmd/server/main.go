@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/AryanAguiar/LatencyLab/backend/internal/faults"
+	"github.com/AryanAguiar/LatencyLab/backend/internal/loadtest"
+	"github.com/AryanAguiar/LatencyLab/backend/internal/metrics"
 	"github.com/AryanAguiar/LatencyLab/backend/internal/sandbox"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -93,6 +95,84 @@ func (r createTargetRequest) validate() map[string]string {
 	return errs
 }
 
+func runExperimentHandler(baseURL string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var cfg loadtest.ExperimentConfig
+
+		if err := decodeJSON(w, r, &cfg); err != nil {
+			writeError(
+				w,
+				http.StatusBadRequest,
+				"invalid JSON: "+err.Error(),
+				nil,
+			)
+			return
+		}
+
+		if err := cfg.Validate(); err != nil {
+			writeError(
+				w,
+				http.StatusUnprocessableEntity,
+				err.Error(),
+				nil,
+			)
+			return
+		}
+
+		result, err := loadtest.Run(
+			r.Context(),
+			cfg,
+			baseURL,
+		)
+
+		if err != nil {
+			if r.Context().Err() != nil {
+				return
+			}
+
+			writeError(
+				w,
+				http.StatusInternalServerError,
+				"experiment failed: "+err.Error(),
+				nil,
+			)
+			return
+		}
+
+		writeJSON(w, http.StatusOK, result)
+	}
+}
+
+func runMetricsHandler(baseURL string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var cfg loadtest.ExperimentConfig
+
+		if err := decodeJSON(w, r, &cfg); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error(), nil)
+			return
+		}
+
+		if err := cfg.Validate(); err != nil {
+			writeError(w, http.StatusUnprocessableEntity, err.Error(), nil)
+			return
+		}
+
+		start := time.Now()
+		result, err := loadtest.Run(r.Context(), cfg, baseURL)
+		elapsed := time.Since(start)
+
+		if err != nil {
+			if r.Context().Err() != nil {
+				return
+			}
+			writeError(w, http.StatusInternalServerError, "experiment failed: "+err.Error(), nil)
+			return
+		}
+
+		writeJSON(w, http.StatusOK, metrics.Calculate(result.Results, elapsed))
+	}
+}
+
 // ---------------------------------------------------------------------
 // main
 func main() {
@@ -127,6 +207,12 @@ func main() {
 		r.Post("/targets", createTargetHandler)
 		r.Route("/v1", func(r chi.Router) {
 			r.Get("/sandbox/endpoints", sandbox.ListEndpoints)
+			r.Post("/experiments/run", runExperimentHandler(
+				getEnv("BACKEND_URL", "http://localhost:"+port),
+			))
+			r.Post("/experiments/metrics", runMetricsHandler(
+				getEnv("BACKEND_URL", "http://localhost:"+port),
+			))
 		})
 	})
 
