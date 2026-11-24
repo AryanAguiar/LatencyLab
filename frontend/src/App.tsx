@@ -1,121 +1,80 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import { lazy, Suspense, useEffect, useState } from 'react'
+import { Box, CircularProgress } from '@mui/material'
+import { checkHealth, getSandboxEndpoints, runExperiment } from './api/client'
+import type { ConnectionStatus, AppPage } from './components/AppLayout'
+import { AppLayout } from './components/AppLayout'
+import type { ExperimentConfig, ExperimentResponse, SandboxEndpoint } from './types'
+import type { ExecutionStatus } from './components/ExperimentStatus'
+
+const OverviewPage = lazy(() => import('./pages/OverviewPage').then((module) => ({ default: module.OverviewPage })))
+const ExperimentRunnerPage = lazy(() => import('./pages/ExperimentRunnerPage').then((module) => ({ default: module.ExperimentRunnerPage })))
+const ExperimentResultsPage = lazy(() => import('./pages/ExperimentResultsPage').then((module) => ({ default: module.ExperimentResultsPage })))
+const EndpointsPage = lazy(() => import('./pages/EndpointsPage').then((module) => ({ default: module.EndpointsPage })))
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [page, setPage] = useState<AppPage>('overview')
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('checking')
+  const [endpoints, setEndpoints] = useState<SandboxEndpoint[]>([])
+  const [endpointsLoading, setEndpointsLoading] = useState(true)
+  const [endpointsError, setEndpointsError] = useState<string | null>(null)
+  const [lastResult, setLastResult] = useState<ExperimentResponse | null>(null)
+  const [executionStatus, setExecutionStatus] = useState<ExecutionStatus>('idle')
+  const [executionError, setExecutionError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let active = true
+    const refreshHealth = () => {
+      checkHealth()
+        .then(() => { if (active) setConnectionStatus('connected') })
+        .catch(() => { if (active) setConnectionStatus('offline') })
+    }
+    refreshHealth()
+    getSandboxEndpoints()
+      .then((data) => {
+        if (active) setEndpoints(data)
+      })
+      .catch((error: unknown) => {
+        if (active) setEndpointsError(error instanceof Error ? error.message : 'Unable to load sandbox endpoints.')
+      })
+      .finally(() => { if (active) setEndpointsLoading(false) })
+    const healthInterval = window.setInterval(refreshHealth, 30_000)
+    return () => {
+      active = false
+      window.clearInterval(healthInterval)
+    }
+  }, [])
+
+  function navigate(destination: AppPage) {
+    if (destination === 'experiments' && page !== 'experiments') {
+      setExecutionStatus('idle')
+      setExecutionError(null)
+    }
+    setPage(destination)
+  }
+
+  async function handleRun(config: ExperimentConfig) {
+    setExecutionStatus('running')
+    setExecutionError(null)
+    try {
+      const result = await runExperiment(config)
+      setLastResult(result)
+      setExecutionStatus('completed')
+      setPage('results')
+    } catch (error) {
+      setExecutionError(error instanceof Error ? error.message : 'The experiment could not be completed.')
+      setExecutionStatus('error')
+    }
+  }
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
+    <AppLayout page={page} onNavigate={navigate} connectionStatus={connectionStatus}>
+      <Suspense fallback={<Box sx={{ minHeight: 280, display: 'grid', placeItems: 'center' }}><CircularProgress size={24} /></Box>}>
+        {page === 'overview' && <OverviewPage result={lastResult} connectionStatus={connectionStatus} onRun={() => navigate('experiments')} />}
+        {page === 'experiments' && <ExperimentRunnerPage status={executionStatus} endpoints={endpoints} endpointsLoading={endpointsLoading} endpointsError={endpointsError} error={executionError} onRun={handleRun} onViewResults={() => setPage('results')} />}
+        {page === 'results' && <ExperimentResultsPage result={lastResult} onNewExperiment={() => navigate('experiments')} />}
+        {page === 'endpoints' && <EndpointsPage endpoints={endpoints} loading={endpointsLoading} error={endpointsError} />}
+      </Suspense>
+    </AppLayout>
   )
 }
 
