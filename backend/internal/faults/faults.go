@@ -6,6 +6,8 @@ import (
 	"errors"
 	"math/rand/v2"
 	"net/http"
+	"net/url"
+	"strconv"
 	"time"
 )
 
@@ -26,9 +28,17 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-func Middleware(cfg Config) func(http.Handler) http.Handler {
+func Middleware(base Config) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			cfg, err := override(base, r)
+			if err != nil {
+				writeJSON(w, http.StatusBadRequest, errorResponse{
+					Error:   "invalid_fault_params",
+					Message: err.Error(),
+				})
+				return
+			}
 
 			if err := ApplyDelay(r.Context(), cfg.DelayMs); err != nil {
 				return
@@ -93,4 +103,40 @@ func ShouldFail(probability float64) bool {
 	}
 
 	return rand.Float64() < probability
+}
+
+// timeout_ms is not included: it is the client's timeout, not a server fault.
+func (c Config) Query() url.Values {
+	q := url.Values{}
+	q.Set("delay_ms", strconv.Itoa(c.DelayMs))
+	q.Set("failure_probability", strconv.FormatFloat(c.FailureProbability, 'f', -1, 64))
+	return q
+}
+
+// override applies fault query params on top of base. Params that are
+// absent keep the base value, so an explicit 0 still counts.
+func override(base Config, r *http.Request) (Config, error) {
+	q := r.URL.Query()
+	cfg := base
+
+	if q.Has("delay_ms") {
+		v, err := strconv.Atoi(q.Get("delay_ms"))
+		if err != nil {
+			return base, errors.New("delay_ms must be an integer")
+		}
+		cfg.DelayMs = v
+	}
+
+	if q.Has("failure_probability") {
+		v, err := strconv.ParseFloat(q.Get("failure_probability"), 64)
+		if err != nil {
+			return base, errors.New("failure_probability must be a number")
+		}
+		cfg.FailureProbability = v
+	}
+
+	if err := cfg.Validate(); err != nil {
+		return base, err
+	}
+	return cfg, nil
 }

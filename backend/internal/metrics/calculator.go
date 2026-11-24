@@ -1,6 +1,8 @@
 package metrics
 
 import (
+	"math"
+	"sort"
 	"time"
 
 	"github.com/AryanAguiar/LatencyLab/backend/internal/loadtest"
@@ -28,6 +30,7 @@ func Calculate(results []loadtest.RequestResult, duration time.Duration) Experim
 	var minLatency time.Duration
 	var maxLatency time.Duration
 	var latencyCount int
+	latencies := make([]time.Duration, 0, len(results))
 
 	m.TotalRequests = len(results)
 	m.ExperimentDuration = duration
@@ -57,6 +60,7 @@ func Calculate(results []loadtest.RequestResult, duration time.Duration) Experim
 
 		totalLatency += r.Latency
 		latencyCount++
+		latencies = append(latencies, r.Latency)
 	}
 
 	if m.TotalRequests > 0 {
@@ -73,7 +77,26 @@ func Calculate(results []loadtest.RequestResult, duration time.Duration) Experim
 		m.AverageLatency = totalLatency / time.Duration(latencyCount)
 		m.MinLatency = minLatency
 		m.MaxLatency = maxLatency
+
+		sort.Slice(latencies, func(i, j int) bool { return latencies[i] < latencies[j] })
+		m.P50Latency = percentile(latencies, 50)
+		m.P95Latency = percentile(latencies, 95)
+		m.P99Latency = percentile(latencies, 99)
 	}
 
 	return m
+}
+
+func percentile(sorted []time.Duration, p float64) time.Duration {
+	if len(sorted) == 0 {
+		return 0
+	}
+	idx := int(math.Ceil(p*float64(len(sorted))/100)) - 1
+	if idx < 0 {
+		idx = 0
+	}
+	if idx >= len(sorted) {
+		idx = len(sorted) - 1
+	}
+	return sorted[idx]
 }

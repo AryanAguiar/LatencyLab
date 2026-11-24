@@ -226,3 +226,36 @@ func TestCalculateZeroDuration(t *testing.T) {
 			got.RequestsPerSecond)
 	}
 }
+
+// ----------------------------------------------------------------
+// Calculate percentiles
+func TestCalculatePercentiles(t *testing.T) {
+	results := make([]loadtest.RequestResult, 100)
+	for i := range results {
+		results[i].Latency = time.Duration(i+1) * time.Millisecond
+	}
+	// shuffle-ish: reverse so sorting actually matters
+	for i, j := 0, len(results)-1; i < j; i, j = i+1, j-1 {
+		results[i], results[j] = results[j], results[i]
+	}
+
+	got := Calculate(results, 0)
+
+	if got.P50Latency != 50*time.Millisecond {
+		t.Errorf("P50 = %v, want 50ms", got.P50Latency)
+	}
+	if got.P95Latency != 95*time.Millisecond {
+		t.Errorf("P95 = %v, want 95ms", got.P95Latency)
+	}
+	if got.P99Latency != 99*time.Millisecond {
+		t.Errorf("P99 = %v, want 99ms", got.P99Latency)
+	}
+}
+
+func TestCalculatePercentilesSingleRequest(t *testing.T) {
+	got := Calculate([]loadtest.RequestResult{{Latency: 500 * time.Millisecond}}, 0)
+
+	if got.P50Latency != 500*time.Millisecond || got.P99Latency != 500*time.Millisecond {
+		t.Errorf("single request percentiles = %v / %v, want 500ms", got.P50Latency, got.P99Latency)
+	}
+}

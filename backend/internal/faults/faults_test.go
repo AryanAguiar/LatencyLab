@@ -254,3 +254,33 @@ func TestMiddleware_CombinedFaults(t *testing.T) {
 		t.Fatal("handler was called despite injected failure")
 	}
 }
+
+func TestMiddlewareQueryOverridesDefaults(t *testing.T) {
+	// defaults would fail every request
+	h := Middleware(Config{FailureProbability: 1})(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}),
+	)
+
+	// no params: falls back to the defaults, so it fails
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/x", nil))
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("no params: got %d, want 500", rec.Code)
+	}
+
+	// explicit zero overrides the default
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/x?failure_probability=0&delay_ms=0", nil))
+	if rec.Code != http.StatusOK {
+		t.Errorf("override to 0: got %d, want 200", rec.Code)
+	}
+
+	// invalid value is rejected
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/x?failure_probability=5", nil))
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("invalid param: got %d, want 400", rec.Code)
+	}
+}

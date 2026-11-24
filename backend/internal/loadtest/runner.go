@@ -2,9 +2,9 @@ package loadtest
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
+	"sort"
 	"sync"
 	"time"
 )
@@ -47,7 +47,7 @@ func Run(ctx context.Context, cfg ExperimentConfig, baseURL string) (ExperimentR
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 
-	targetURL := baseURL + endpoints[cfg.TargetEndpoint]
+	targetURL := baseURL + endpoints[cfg.TargetEndpoint] + "?" + cfg.Faults.Query().Encode()
 	client := &http.Client{
 		Timeout: time.Duration(cfg.Faults.TimeoutMs) * time.Millisecond,
 	}
@@ -84,10 +84,9 @@ func Run(ctx context.Context, cfg ExperimentConfig, baseURL string) (ExperimentR
 	for r := range results {
 		collected = append(collected, r)
 	}
+	sort.Slice(collected, func(i, j int) bool {
+		return collected[i].RequestID < collected[j].RequestID
+	})
 
-	out := ExperimentResult{Config: cfg, Results: collected}
-	if err := parent.Err(); err != nil && !errors.Is(err, context.Canceled) {
-		return out, err
-	}
-	return out, parent.Err()
+	return ExperimentResult{Config: cfg, Results: collected}, parent.Err()
 }

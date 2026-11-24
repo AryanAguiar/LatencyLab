@@ -1,19 +1,13 @@
 package main
 
 import (
-	"encoding/json"
-	"errors"
-	"io"
-	"strings"
-
 	"log"
 	"net/http"
 	"os"
 	"time"
 
+	"github.com/AryanAguiar/LatencyLab/backend/internal/api"
 	"github.com/AryanAguiar/LatencyLab/backend/internal/faults"
-	"github.com/AryanAguiar/LatencyLab/backend/internal/loadtest"
-	"github.com/AryanAguiar/LatencyLab/backend/internal/metrics"
 	"github.com/AryanAguiar/LatencyLab/backend/internal/sandbox"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -26,151 +20,6 @@ func getEnv(key, fallback string) string {
 		return v
 	}
 	return fallback
-}
-
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	if err := json.NewEncoder(w).Encode(v); err != nil {
-		log.Printf("encode error: %v", err)
-	}
-}
-
-func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) error {
-	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1MB limit
-	dec := json.NewDecoder(r.Body)
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(dst); err != nil {
-		return err
-	}
-	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		return errors.New("body must contain a single JSON object")
-	}
-	return nil
-}
-
-type createTargetRequest struct {
-	Name string `json:"name"`
-	URL  string `json:"url"`
-}
-
-func createTargetHandler(w http.ResponseWriter, r *http.Request) {
-	var req createTargetRequest
-	if err := decodeJSON(w, r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error(), nil)
-		return
-	}
-	if errs := req.validate(); len(errs) > 0 {
-		writeError(w, http.StatusUnprocessableEntity, "validation failed", errs)
-		return
-	}
-	writeJSON(w, http.StatusCreated, map[string]any{
-		"id":   "tgt_1", // placeholder
-		"name": req.Name,
-		"url":  req.URL,
-	})
-}
-
-func healthHandler(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
-}
-
-type errorResponse struct {
-	Error  string            `json:"error"`
-	Fields map[string]string `json:"fields,omitempty"`
-}
-
-func writeError(w http.ResponseWriter, status int, msg string, fields map[string]string) {
-	writeJSON(w, status, errorResponse{Error: msg, Fields: fields})
-}
-
-func (r createTargetRequest) validate() map[string]string {
-	errs := map[string]string{}
-	if strings.TrimSpace(r.Name) == "" {
-		errs["name"] = "is required"
-	}
-	if !strings.HasPrefix(r.URL, "http://") && !strings.HasPrefix(r.URL, "https://") {
-		errs["url"] = "must start with http:// or https://"
-	}
-	return errs
-}
-
-func runExperimentHandler(baseURL string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		var cfg loadtest.ExperimentConfig
-
-		if err := decodeJSON(w, r, &cfg); err != nil {
-			writeError(
-				w,
-				http.StatusBadRequest,
-				"invalid JSON: "+err.Error(),
-				nil,
-			)
-			return
-		}
-
-		if err := cfg.Validate(); err != nil {
-			writeError(
-				w,
-				http.StatusUnprocessableEntity,
-				err.Error(),
-				nil,
-			)
-			return
-		}
-
-		result, err := loadtest.Run(
-			r.Context(),
-			cfg,
-			baseURL,
-		)
-
-		if err != nil {
-			if r.Context().Err() != nil {
-				return
-			}
-
-			writeError(
-				w,
-				http.StatusInternalServerError,
-				"experiment failed: "+err.Error(),
-				nil,
-			)
-			return
-		}
-
-		writeJSON(w, http.StatusOK, result)
-	}
-}
-
-func runMetricsHandler(baseURL string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		var cfg loadtest.ExperimentConfig
-
-		if err := decodeJSON(w, r, &cfg); err != nil {
-			writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error(), nil)
-			return
-		}
-
-		if err := cfg.Validate(); err != nil {
-			writeError(w, http.StatusUnprocessableEntity, err.Error(), nil)
-			return
-		}
-
-		start := time.Now()
-		result, err := loadtest.Run(r.Context(), cfg, baseURL)
-		elapsed := time.Since(start)
-
-		if err != nil {
-			if r.Context().Err() != nil {
-				return
-			}
-			writeError(w, http.StatusInternalServerError, "experiment failed: "+err.Error(), nil)
-			return
-		}
-
-		writeJSON(w, http.StatusOK, metrics.Calculate(result.Results, elapsed))
-	}
 }
 
 // ---------------------------------------------------------------------
@@ -201,20 +50,7 @@ func main() {
 		w.Write([]byte("Hello"))
 	})
 
-	r.Get("/health", healthHandler)
-
-	r.Route("/api", func(r chi.Router) {
-		r.Post("/targets", createTargetHandler)
-		r.Route("/v1", func(r chi.Router) {
-			r.Get("/sandbox/endpoints", sandbox.ListEndpoints)
-			r.Post("/experiments/run", runExperimentHandler(
-				getEnv("BACKEND_URL", "http://localhost:"+port),
-			))
-			r.Post("/experiments/metrics", runMetricsHandler(
-				getEnv("BACKEND_URL", "http://localhost:"+port),
-			))
-		})
-	})
+	api.Mount(r, getEnv("BACKEND_URL", "http://localhost:"+port))
 
 	r.Route("/sandbox/api", func(r chi.Router) {
 		r.Use(faults.Middleware(testFaults))

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"runtime"
 	"sync/atomic"
 	"testing"
@@ -276,5 +277,29 @@ func TestInvalidConfig(t *testing.T) {
 
 	if hits.Load() != 0 {
 		t.Errorf("server received %d requests, want 0", hits.Load())
+	}
+}
+
+// Test 8
+func TestFaultsForwardedAsQuery(t *testing.T) {
+	seen := make(chan url.Values, 1)
+	srv := newServer(t, func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case seen <- r.URL.Query():
+		default:
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+
+	c := cfg(1, 1)
+	c.Faults = faults.Config{DelayMs: 0, FailureProbability: 0.25, TimeoutMs: 2000}
+
+	if _, err := Run(context.Background(), c, srv.URL); err != nil {
+		t.Fatal(err)
+	}
+
+	q := <-seen
+	if q.Get("delay_ms") != "0" || q.Get("failure_probability") != "0.25" {
+		t.Errorf("faults not forwarded, got query %v", q)
 	}
 }
