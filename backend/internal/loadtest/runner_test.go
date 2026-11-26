@@ -261,6 +261,7 @@ func TestInvalidConfig(t *testing.T) {
 		{"too many requests", cfg(MaxRequests+1, 3)},
 		{"unknown endpoint", ExperimentConfig{TargetEndpoint: "https://evil.com", Requests: 1, Concurrency: 1}},
 		{"bad faults", ExperimentConfig{TargetEndpoint: "products", Requests: 1, Concurrency: 1, Faults: faults.Config{FailureProbability: 2}}},
+		{"would exceed time budget", ExperimentConfig{TargetEndpoint: "products", Requests: 50, Concurrency: 5, Faults: faults.Config{DelayMs: 10000, TimeoutMs: 2500}}},
 	}
 
 	for _, tc := range tests {
@@ -301,5 +302,27 @@ func TestFaultsForwardedAsQuery(t *testing.T) {
 	q := <-seen
 	if q.Get("delay_ms") != "0" || q.Get("failure_probability") != "0.25" {
 		t.Errorf("faults not forwarded, got query %v", q)
+	}
+}
+
+// Test 9
+func TestEstimatedDuration(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  ExperimentConfig
+		want time.Duration
+	}{
+		{"timeout caps the delay", ExperimentConfig{Requests: 50, Concurrency: 5, Faults: faults.Config{DelayMs: 10000, TimeoutMs: 2500}}, 25 * time.Second},
+		{"delay below timeout", ExperimentConfig{Requests: 50, Concurrency: 5, Faults: faults.Config{DelayMs: 500, TimeoutMs: 2500}}, 5 * time.Second},
+		{"timeout off", ExperimentConfig{Requests: 10, Concurrency: 5, Faults: faults.Config{DelayMs: 1000, TimeoutMs: 0}}, 2 * time.Second},
+		{"partial last round counts", ExperimentConfig{Requests: 11, Concurrency: 5, Faults: faults.Config{DelayMs: 1000, TimeoutMs: 5000}}, 3 * time.Second},
+		{"no delay", ExperimentConfig{Requests: 100, Concurrency: 1}, 0},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.cfg.EstimatedDuration(); got != tc.want {
+				t.Errorf("got %v, want %v", got, tc.want)
+			}
+		})
 	}
 }

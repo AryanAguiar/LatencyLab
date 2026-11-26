@@ -10,6 +10,7 @@ const OverviewPage = lazy(() => import('./pages/OverviewPage').then((module) => 
 const ExperimentRunnerPage = lazy(() => import('./pages/ExperimentRunnerPage').then((module) => ({ default: module.ExperimentRunnerPage })))
 const ExperimentResultsPage = lazy(() => import('./pages/ExperimentResultsPage').then((module) => ({ default: module.ExperimentResultsPage })))
 const EndpointsPage = lazy(() => import('./pages/EndpointsPage').then((module) => ({ default: module.EndpointsPage })))
+const ComparePage = lazy(() => import('./pages/ComparePage').then((module) => ({ default: module.ComparePage })))
 
 function App() {
   const [page, setPage] = useState<AppPage>('overview')
@@ -73,6 +74,7 @@ function App() {
         {page === 'experiments' && <ExperimentRunnerPage status={executionStatus} endpoints={endpoints} endpointsLoading={endpointsLoading} endpointsError={endpointsError} error={executionError} onRun={handleRun} onViewResults={() => setPage('results')} />}
         {page === 'results' && <ExperimentResultsPage result={lastResult} onNewExperiment={() => navigate('experiments')} />}
         {page === 'endpoints' && <EndpointsPage endpoints={endpoints} loading={endpointsLoading} error={endpointsError} />}
+        {page === 'compare' && <ComparePage />}
       </Suspense>
     </AppLayout>
   )

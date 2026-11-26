@@ -10,9 +10,9 @@ type SidebarProps = {
 const items: { id: AppPage; label: string; icon: string; disabled?: boolean }[] = [
   { id: 'overview', label: 'Overview', icon: 'M3 3h7v7H3z M14 3h7v5h-7z M14 12h7v9h-7z M3 14h7v7H3z' },
   { id: 'experiments', label: 'Experiments', icon: 'M9 3h6 M10 3v6.2L4.8 18a2 2 0 0 0 1.7 3h11a2 2 0 0 0 1.7-3L14 9.2V3 M7 16h10' },
-  { id: 'compare', label: 'Compare', icon: 'M4 19V5 M4 19h17 M8 15l3-4 3 2 5-7' , disabled: true },
+  { id: 'compare', label: 'Compare', icon: 'M4 19V5 M4 19h17 M8 15l3-4 3 2 5-7' },
   { id: 'endpoints', label: 'Endpoints', icon: 'M4 6h16 M4 12h16 M4 18h16 M8 6v.01 M8 12v.01 M8 18v.01' },
-  { id: 'settings', label: 'Settings', icon: 'M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-1.6 2.77-.08-.02a1.7 1.7 0 0 0-1.8.49l-.06.06h-3.2l-.04-.08a1.7 1.7 0 0 0-1.55-1.03 1.7 1.7 0 0 0-.78.19l-.08.04-2.77-1.6.02-.08a1.7 1.7 0 0 0-.49-1.8l-.06-.06v-3.2l.08-.04a1.7 1.7 0 0 0 .84-2.33l-.04-.08 1.6-2.77.08.02a1.7 1.7 0 0 0 1.8-.49l.06-.06h3.2l.04.08a1.7 1.7 0 0 0 2.33.84l.08-.04 2.77 1.6-.02.08a1.7 1.7 0 0 0 .49 1.8l.06.06v3.2l-.08.04a1.7 1.7 0 0 0-.45.45z', disabled: true },
+  // { id: 'settings', label: 'Settings', icon: 'M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-1.6 2.77-.08-.02a1.7 1.7 0 0 0-1.8.49l-.06.06h-3.2l-.04-.08a1.7 1.7 0 0 0-1.55-1.03 1.7 1.7 0 0 0-.78.19l-.08.04-2.77-1.6.02-.08a1.7 1.7 0 0 0-.49-1.8l-.06-.06v-3.2l.08-.04a1.7 1.7 0 0 0 .84-2.33l-.04-.08 1.6-2.77.08.02a1.7 1.7 0 0 0 1.8-.49l.06-.06h3.2l.04.08a1.7 1.7 0 0 0 2.33.84l.08-.04 2.77 1.6-.02.08a1.7 1.7 0 0 0 .49 1.8l.06.06v3.2l-.08.04a1.7 1.7 0 0 0-.45.45z', disabled: true },
 ]
 
 function NavigationGlyph({ path }: { path: string }) {
@@ -138,7 +138,7 @@ export function Sidebar({ page, onNavigate, connectionStatus }: SidebarProps) {
         })}
       </Stack>
 
-      <Box sx={{ mt: 'auto', pt: 2, '@media (max-width: 760px)': { display: 'none' } }}>
+      {/* <Box sx={{ mt: 'auto', pt: 2, '@media (max-width: 760px)': { display: 'none' } }}>
         <Box sx={{ borderTop: '1px solid', borderColor: 'divider', pt: 1.75, px: 1 }}>
           <Typography variant="overline" color="text.secondary">SANDBOX ENVIRONMENT</Typography>
           <Stack direction="row" spacing={0.8} sx={{ alignItems: 'center', mt: 0.7 }}>
@@ -146,7 +146,7 @@ export function Sidebar({ page, onNavigate, connectionStatus }: SidebarProps) {
             <Typography variant="caption" color={connectionColor}>{connectionLabel}</Typography>
           </Stack>
         </Box>
-      </Box>
+      </Box> */}
     </Box>
   )
 }

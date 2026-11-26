@@ -11,6 +11,7 @@ import (
 )
 
 type ExperimentConfig struct {
+	ExperimentType string        `json:"experiment_type,omitempty"`
 	Name           string        `json:"name"`
 	TargetEndpoint string        `json:"target_endpoint"`
 	Requests       int           `json:"requests"`

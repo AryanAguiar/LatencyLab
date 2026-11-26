@@ -76,7 +76,7 @@ export function FaultConfiguration({
           value={delayMs}
           onChange={(event) => onDelayChange(Number(event.target.value))}
           slotProps={{
-            htmlInput: { min: 0, max: 10000, step: 50 },
+            htmlInput: { min: 0, max: 10000, step: 1 },
             input: { endAdornment: <InputAdornment position="end">ms</InputAdornment> },
           }}
           helperText="Allowed range: 0–10,000 ms"

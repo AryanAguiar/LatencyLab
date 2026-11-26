@@ -25,7 +25,32 @@ type ExperimentResult struct {
 	Results []RequestResult  `json:"results"`
 }
 
+const MaxEstimatedDuration = 20 * time.Second
+
+func (c ExperimentConfig) EstimatedDuration() time.Duration {
+	perRequest := time.Duration(c.Faults.DelayMs) * time.Millisecond
+	if c.Faults.TimeoutMs > 0 {
+		if t := time.Duration(c.Faults.TimeoutMs) * time.Millisecond; t < perRequest {
+			perRequest = t
+		}
+	}
+	rounds := (c.Requests + c.Concurrency - 1) / c.Concurrency
+	return time.Duration(rounds) * perRequest
+}
+
 func (c ExperimentConfig) Validate() error {
+	return c.validate(true)
+}
+
+// ValidateForExtendedDuration keeps configuration limits but makes the recommended duration advisory.
+func (c ExperimentConfig) ValidateForExtendedDuration() error {
+	return c.validate(false)
+}
+
+func (c ExperimentConfig) validate(enforceRecommendedDuration bool) error {
+	if c.ExperimentType != "" && c.ExperimentType != "baseline" && c.ExperimentType != "chaos" {
+		return fmt.Errorf("experiment_type must be baseline or chaos")
+	}
 	if _, ok := endpoints[c.TargetEndpoint]; !ok {
 		return fmt.Errorf("unknown target endpoint %q", c.TargetEndpoint)
 	}
@@ -35,11 +60,35 @@ func (c ExperimentConfig) Validate() error {
 	if c.Concurrency < 1 || c.Concurrency > MaxConcurrency {
 		return fmt.Errorf("concurrency must be between 1 and %d", MaxConcurrency)
 	}
-	return c.Faults.Validate()
+	if err := c.Faults.Validate(); err != nil {
+		return err
+	}
+	if est := c.EstimatedDuration(); enforceRecommendedDuration && est > MaxEstimatedDuration {
+		return fmt.Errorf(
+			"this config would take about %s, max is %s: lower requests or delay, or raise concurrency",
+			est.Round(time.Second), MaxEstimatedDuration,
+		)
+	}
+	return nil
 }
 
 func Run(ctx context.Context, cfg ExperimentConfig, baseURL string) (ExperimentResult, error) {
-	if err := cfg.Validate(); err != nil {
+	return run(ctx, cfg, baseURL, true)
+}
+
+// RunWithExtendedDuration is used when the caller has warned the user about a long run.
+func RunWithExtendedDuration(ctx context.Context, cfg ExperimentConfig, baseURL string) (ExperimentResult, error) {
+	return run(ctx, cfg, baseURL, false)
+}
+
+func run(ctx context.Context, cfg ExperimentConfig, baseURL string, enforceRecommendedDuration bool) (ExperimentResult, error) {
+	var err error
+	if enforceRecommendedDuration {
+		err = cfg.Validate()
+	} else {
+		err = cfg.ValidateForExtendedDuration()
+	}
+	if err != nil {
 		return ExperimentResult{}, err
 	}
 

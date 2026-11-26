@@ -43,6 +43,17 @@ export type ExperimentResponse = {
   results: RequestResult[]
 }
 
+export type ExperimentHistoryItem = {
+  id: string
+  status: 'running' | 'completed' | 'failed' | 'cancelled'
+  experiment_type: string
+  target_endpoint: string
+  metrics: ExperimentMetrics | null
+  started_at: string | null
+  completed_at: string | null
+  created_at: string
+}
+
 export type SandboxEndpoint = {
   method: string
   path: string

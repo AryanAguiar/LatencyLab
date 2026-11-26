@@ -48,7 +48,7 @@ export function ExperimentRunnerPage({ status, endpoints, endpointsLoading, endp
                   ['Request cap', '100 per experiment'],
                   ['Concurrency cap', '10 workers'],
                   ['Fault scope', 'Sandbox endpoints only'],
-                  ['Execution time', '25-second server limit'],
+                  // ['Execution time', '25-second server limit'],
                 ].map(([label, value]) => (
                   <Stack key={label} direction="row" spacing={1} sx={{ justifyContent: 'space-between', alignItems: 'center', gap: 1 }}>
                     <Typography variant="caption" color="text.secondary">{label}</Typography>

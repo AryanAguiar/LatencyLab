@@ -1,4 +1,4 @@
-import type { ExperimentConfig, ExperimentMetrics, ExperimentResponse, RequestResult, SandboxEndpoint } from '../types'
+import type { ExperimentConfig, ExperimentHistoryItem, ExperimentMetrics, ExperimentResponse, RequestResult, SandboxEndpoint } from '../types'
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080').replace(/\/$/, '')
 
@@ -14,6 +14,31 @@ function numberField(record: Record<string, unknown>, key: string): number {
     throw new Error(`Backend returned an invalid experiment metric: ${key}.`)
   }
   return value
+}
+
+function isExperimentStatus(value: unknown): value is ExperimentHistoryItem['status'] {
+  return value === 'running' || value === 'completed' || value === 'failed' || value === 'cancelled'
+}
+
+function parseExperimentMetrics(payload: unknown): ExperimentMetrics {
+  if (!isRecord(payload)) {
+    throw new Error('Backend returned invalid experiment metrics.')
+  }
+  return {
+    total_requests: numberField(payload, 'total_requests'),
+    successful_requests: numberField(payload, 'successful_requests'),
+    failed_requests: numberField(payload, 'failed_requests'),
+    success_rate: numberField(payload, 'success_rate'),
+    failure_rate: numberField(payload, 'failure_rate'),
+    average_latency_ns: numberField(payload, 'average_latency_ns'),
+    min_latency_ns: numberField(payload, 'min_latency_ns'),
+    max_latency_ns: numberField(payload, 'max_latency_ns'),
+    p50_latency_ns: numberField(payload, 'p50_latency_ns'),
+    p95_latency_ns: numberField(payload, 'p95_latency_ns'),
+    p99_latency_ns: numberField(payload, 'p99_latency_ns'),
+    requests_per_second: numberField(payload, 'requests_per_second'),
+    experiment_duration_ns: numberField(payload, 'experiment_duration_ns'),
+  }
 }
 
 async function requestJson<T>(path: string, parser: JsonParser<T>, init?: RequestInit): Promise<T> {
@@ -93,21 +118,7 @@ function parseExperimentResponse(payload: unknown): ExperimentResponse {
   }
 
   const metricsPayload = payload.metrics
-  const metrics: ExperimentMetrics = {
-    total_requests: numberField(metricsPayload, 'total_requests'),
-    successful_requests: numberField(metricsPayload, 'successful_requests'),
-    failed_requests: numberField(metricsPayload, 'failed_requests'),
-    success_rate: numberField(metricsPayload, 'success_rate'),
-    failure_rate: numberField(metricsPayload, 'failure_rate'),
-    average_latency_ns: numberField(metricsPayload, 'average_latency_ns'),
-    min_latency_ns: numberField(metricsPayload, 'min_latency_ns'),
-    max_latency_ns: numberField(metricsPayload, 'max_latency_ns'),
-    p50_latency_ns: numberField(metricsPayload, 'p50_latency_ns'),
-    p95_latency_ns: numberField(metricsPayload, 'p95_latency_ns'),
-    p99_latency_ns: numberField(metricsPayload, 'p99_latency_ns'),
-    requests_per_second: numberField(metricsPayload, 'requests_per_second'),
-    experiment_duration_ns: numberField(metricsPayload, 'experiment_duration_ns'),
-  }
+  const metrics = parseExperimentMetrics(metricsPayload)
 
   const results: RequestResult[] = payload.results.map((result): RequestResult => {
     if (
@@ -155,5 +166,45 @@ export function runExperiment(config: ExperimentConfig): Promise<ExperimentRespo
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(config),
+  })
+}
+
+export function getExperimentHistory(limit = 100, offset = 0): Promise<ExperimentHistoryItem[]> {
+  const query = new URLSearchParams({ limit: String(limit), offset: String(offset) })
+  return requestJson(`/api/v1/experiments?${query}`, (payload) => {
+    if (!isRecord(payload) || !Array.isArray(payload.experiments)) {
+      throw new Error('Backend returned an invalid experiment history.')
+    }
+
+    return payload.experiments.map((item): ExperimentHistoryItem => {
+      if (
+        !isRecord(item) ||
+        typeof item.id !== 'string' ||
+        !isExperimentStatus(item.status) ||
+        typeof item.experiment_type !== 'string' ||
+        typeof item.target_endpoint !== 'string' ||
+        (item.started_at !== null && typeof item.started_at !== 'string') ||
+        (item.completed_at !== null && typeof item.completed_at !== 'string') ||
+        typeof item.created_at !== 'string'
+      ) {
+        throw new Error('Backend returned an invalid experiment history entry.')
+      }
+
+      let metrics: ExperimentMetrics | null = null
+      if (isRecord(item.metrics) && typeof item.metrics.total_requests === 'number') {
+        metrics = parseExperimentMetrics(item.metrics)
+      }
+
+      return {
+        id: item.id,
+        status: item.status,
+        experiment_type: item.experiment_type,
+        target_endpoint: item.target_endpoint,
+        metrics,
+        started_at: item.started_at,
+        completed_at: item.completed_at,
+        created_at: item.created_at,
+      }
+    })
   })
 }

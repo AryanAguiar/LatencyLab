@@ -1,7 +1,11 @@
 import { useState, type FormEvent } from 'react'
-import { Box, Button, FormControl, MenuItem, Stack, TextField, Typography } from '@mui/material'
+import { Alert, Box, Button, FormControl, MenuItem, Stack, TextField, Typography } from '@mui/material'
 import type { ExperimentConfig, SandboxEndpoint } from '../types'
+import { formatDuration } from '../utils/format'
 import { FaultConfiguration } from './FaultConfiguration'
+
+const recommendedMaxDurationMs = 20_000
+const maxExperimentRuntimeMs = 5 * 60 * 1000
 
 type ExperimentFormProps = {
   endpoints: SandboxEndpoint[]
@@ -26,6 +30,9 @@ export function ExperimentForm({ endpoints, disabled = false, onSubmit }: Experi
   const selectedEndpoint = endpointOptions.some((endpoint) => endpoint.id === targetEndpoint)
     ? targetEndpoint
     : endpointOptions[0]?.id ?? ''
+  const delayForEstimate = delayEnabled ? delayMs : 0
+  const durationPerRequest = timeoutMs > 0 ? Math.min(delayForEstimate, timeoutMs) : delayForEstimate
+  const estimatedDurationMs = Math.ceil(requests / Math.max(concurrency, 1)) * Math.max(durationPerRequest, 0)
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -104,11 +111,19 @@ export function ExperimentForm({ endpoints, disabled = false, onSubmit }: Experi
             size="small"
             value={timeoutMs}
             onChange={(event) => setTimeoutMs(Number(event.target.value))}
-            slotProps={{ htmlInput: { min: 0, max: 10000, step: 500 } }}
+            slotProps={{ htmlInput: { min: 0, max: 10000, step: 1 } }}
             helperText="0–10,000 ms · 0 = off"
             sx={{ gridColumn: { xs: '1 / -1', sm: 'auto' } }}
           />
         </Box>
+
+        {estimatedDurationMs > recommendedMaxDurationMs && (
+          <Alert severity="warning" variant="outlined">
+            This configuration is estimated to take about {formatDuration(estimatedDurationMs)}; the recommended maximum is 20 seconds.
+            It will still run, but may take a while. Lower requests or delay, or raise concurrency to shorten it.
+            {estimatedDurationMs > maxExperimentRuntimeMs && ' The server will stop a run after 5 minutes.'}
+          </Alert>
+        )}
 
         <Box sx={{ borderTop: '1px solid', borderColor: 'divider', pt: 2 }}>
           <FaultConfiguration
